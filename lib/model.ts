@@ -192,12 +192,15 @@ export function scoreProtocol(
   const age = daysSinceListed(asOf, protocol.listed_at);
   const rawGrowth = numOr(protocol.change_7d, 0);
   const growthPct = Math.max(model.growth_floor, Math.min(model.growth_cap, rawGrowth));
-  const growthMult = 1 + (growthPct / 100) * model.growth_weight;
+  const growthRate = growthPct / 100;
+  const growthMult = 1 + growthRate * model.growth_weight;
   const ageUsed = age ?? model.unknown_age_days;
   const cappedAge = Math.max(0, Math.min(ageUsed, model.maturity_days));
-  const maturityMult = model.maturity_floor + (cappedAge / model.maturity_days) * model.maturity_range;
+  const ageShare = cappedAge / model.maturity_days;
+  const maturityMult = model.maturity_floor + ageShare * model.maturity_range;
   const extraChains = Math.max(protocol.chains.length - 1, 0);
-  const reachMult = 1 + model.reach_per_chain * Math.min(extraChains, model.reach_max_chains);
+  const cappedChains = Math.min(extraChains, model.reach_max_chains);
+  const reachMult = 1 + model.reach_per_chain * cappedChains;
   const base = protocol.tvl_usd * model.base_multiple;
   const implied = Math.max(1, Math.round(base * growthMult * maturityMult * reachMult));
   return { implied, growthPct, growthMult, maturityMult, reachMult, age };
@@ -286,7 +289,8 @@ const roundTo4 = (n: number): number => Math.round(n * 1e4) / 1e4;
 
 /** One step as a single string: its action, then its cost and time, within the gate's 20..600 characters. */
 export function formatStep(step: FarmStep): string {
-  let s = `${step.text} Cost: ${step.cost}. Time: ${step.time}.`;
+  let s = `${step.text} Cost: ${step.cost}. ` +
+    `Time: ${step.time}.`;
   if (s.length > 600) s = `${s.slice(0, 596)}...`;
   if (s.length < 20) s = `${s} Hold the position and check the protocol's own page.`;
   return s;
@@ -318,39 +322,60 @@ function mainAction(p: SnapshotProtocol, capital: number, chain: string): string
   const c = (p.category ?? '').toLowerCase();
   const name = p.name;
   if (c.includes('lend') || c.includes('cdp') || c.includes('collateral') || c.includes('money market'))
-    return `Supply $${capital} of USDC to ${name} on ${chain} and borrow a small amount against it, then repay.`;
+    return `Supply $${capital} of USDC to ${name} on ${chain} and borrow ` +
+      `a small amount against it, then repay.`;
   if (c.includes('dex') || c.includes('yield') || c.includes('leveraged farm'))
-    return `Provide $${capital} of liquidity to ${name}'s main pool on ${chain} and keep the position open.`;
+    return `Provide $${capital} of liquidity to ${name}'s main pool on ${chain} ` +
+      `and keep the position open.`;
   if (c.includes('bridge') || c.includes('canonical bridge'))
-    return `Bridge $${capital} of USDC to ${chain} through ${name} and use the bridged funds in its app.`;
-  if (c.includes('restak')) return `Restake $${capital} of liquid staking tokens through ${name} on ${chain} and keep the receipt.`;
+    return `Bridge $${capital} of USDC to ${chain} through ${name} ` +
+      `and use the bridged funds in its app.`;
+  if (c.includes('restak')) return `Restake $${capital} of liquid staking tokens through ${name} ` +
+    `on ${chain} and keep the receipt.`;
   if (c.includes('liquid staking') || c.includes('staking'))
-    return `Stake $${capital} of the chain's staking asset through ${name} and keep the receipt token.`;
+    return `Stake $${capital} of the chain's staking asset through ${name} ` +
+      `and keep the receipt token.`;
   if (c.includes('perpetual') || c.includes('derivative') || c.includes('options'))
-    return `Deposit $${capital} of USDC as margin on ${name} and open one small hedge, then close it.`;
-  if (c.includes('prediction')) return `Fund $${capital} and place one market position on ${name}, then settle it.`;
+    return `Deposit $${capital} of USDC as margin on ${name} and open one small hedge, ` +
+      `then close it.`;
+  if (c.includes('prediction')) return `Fund $${capital} and place one market position on ${name}, ` +
+    `then settle it.`;
   if (c.includes('curator') || c.includes('allocator') || c.includes('vault'))
     return `Deposit $${capital} into a ${name} vault on ${chain} and keep the shares.`;
-  if (c.includes('stable')) return `Mint or deposit $${capital} of the stable asset through ${name} on ${chain}.`;
-  if (c.includes('rwa')) return `Mint $${capital} of the protocol's yield asset on ${chain} and hold it.`;
-  if (c.includes('insurance')) return `Buy $${capital} of cover from ${name} on ${chain} and keep the policy.`;
-  if (c.includes('gaming') || c.includes('game')) return `Play ${name} on ${chain} with $${capital} of in-game assets and finish one quest line.`;
-  if (c.includes('ai') || c.includes('data')) return `Run one ${name} job on ${chain} with $${capital} of credits and keep the receipt.`;
-  if (c.includes('social')) return `Post and engage daily on ${name} for a week with a $${capital} starter balance.`;
-  if (c.includes('nft')) return `Mint or trade one ${name} item on ${chain} for about $${capital} and list it once.`;
-  if (c.includes('payment')) return `Pay $${capital} through ${name} on ${chain} and keep the receipt.`;
+  if (c.includes('stable')) return `Mint or deposit $${capital} of the stable asset through ` +
+    `${name} on ${chain}.`;
+  if (c.includes('rwa')) return `Mint $${capital} of the protocol's yield asset on ${chain} ` +
+    `and hold it.`;
+  if (c.includes('insurance')) return `Buy $${capital} of cover from ${name} on ${chain} ` +
+    `and keep the policy.`;
+  if (c.includes('gaming') || c.includes('game')) return `Play ${name} on ${chain} with $${capital} ` +
+    `of in-game assets and finish one quest line.`;
+  if (c.includes('ai') || c.includes('data')) return `Run one ${name} job on ${chain} with $${capital} ` +
+    `of credits and keep the receipt.`;
+  if (c.includes('social')) return `Post and engage daily on ${name} for a week with a $${capital} ` +
+    `starter balance.`;
+  if (c.includes('nft')) return `Mint or trade one ${name} item on ${chain} for about $${capital} ` +
+    `and list it once.`;
+  if (c.includes('payment')) return `Pay $${capital} through ${name} on ${chain} ` +
+    `and keep the receipt.`;
   return `Deposit $${capital} of USDC into ${name} on ${chain} and keep the position open.`;
 }
 
 /** The weekly habit that keeps a position qualifying, matched to the category. */
 function weeklyHabit(p: SnapshotProtocol): string {
   const c = (p.category ?? '').toLowerCase();
-  if (c.includes('lend') || c.includes('cdp')) return 'Adjust the borrow once a week, such as adding collateral or repaying a little.';
-  if (c.includes('dex') || c.includes('yield')) return 'Claim or compound the pool rewards once a week and rebalance if the range drifts.';
-  if (c.includes('bridge')) return 'Bridge a small amount back and forth once a week so the route stays active.';
-  if (c.includes('perpetual') || c.includes('derivative')) return 'Open and close one small position each week, never leaving a large trade open.';
-  if (c.includes('prediction')) return 'Place one small market position each week and settle it before it expires.';
-  if (c.includes('gaming') || c.includes('social')) return 'Finish one daily quest each week and keep the streak alive.';
+  if (c.includes('lend') || c.includes('cdp')) return 'Adjust the borrow once a week, such as ' +
+    'adding collateral or repaying a little.';
+  if (c.includes('dex') || c.includes('yield')) return 'Claim or compound the pool rewards once a week ' +
+    'and rebalance if the range drifts.';
+  if (c.includes('bridge')) return 'Bridge a small amount back and forth once a week ' +
+    'so the route stays active.';
+  if (c.includes('perpetual') || c.includes('derivative')) return 'Open and close one small position each week, ' +
+    'never leaving a large trade open.';
+  if (c.includes('prediction')) return 'Place one small market position each week ' +
+    'and settle it before it expires.';
+  if (c.includes('gaming') || c.includes('social')) return 'Finish one daily quest each week ' +
+    'and keep the streak alive.';
   return 'Make one qualifying action each week, such as a deposit, a borrow, a swap or a vote.';
 }
 
@@ -367,7 +392,8 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
   const weekly = weeklyHabit(p);
   return [
     {
-      text: `Use a fresh wallet that holds only the funds you plan to farm, and keep its seed phrase offline.`,
+      text: `Use a fresh wallet that holds only the funds you plan to farm, ` +
+        `and keep its seed phrase offline.`,
       cost: 'under $3 of gas for the first transaction',
       time: '5 minutes',
     },
@@ -382,27 +408,32 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
       time: '10 minutes a week',
     },
     {
-      text: `Open the protocol's own points, quests or rewards page and finish every free task it lists.`,
+      text: `Open the protocol's own points, quests or rewards page and finish ` +
+        `every free task it lists.`,
       cost: 'no fee for the tasks themselves',
       time: '20 minutes a week',
     },
     {
-      text: `Hold the position for at least ${hold} days so the activity is counted in more than one snapshot.`,
+      text: `Hold the position for at least ${hold} days so the activity is counted ` +
+        `in more than one snapshot.`,
       cost: `the $${capital} stays in the position`,
       time: `${hold} days`,
     },
     {
-      text: `Check the protocol's announcements once a week for snapshot dates, and do not move funds the day before one.`,
+      text: `Check the protocol's announcements once a week for snapshot dates, ` +
+        `and do not move funds the day before one.`,
       cost: 'nothing but the check',
       time: '5 minutes a week',
     },
     {
-      text: `Before you withdraw, open the protocol's own points or rewards page and claim only from the link it publishes.`,
+      text: `Before you withdraw, open the protocol's own points or rewards page ` +
+        `and claim only from the link it publishes.`,
       cost: 'no fee to check, and never pay to claim',
       time: '10 minutes',
     },
     {
-      text: `Write the wallet, the dates and every transaction in a farm log so you can repeat the position or unwind it.`,
+      text: `Write the wallet, the dates and every transaction in a farm log ` +
+        `so you can repeat the position or unwind it.`,
       cost: 'nothing but the log',
       time: '5 minutes',
     },
