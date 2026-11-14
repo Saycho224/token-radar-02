@@ -12,14 +12,14 @@
   var usdFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
   function money(n) {
     if (n === null || n === undefined || !isFinite(n)) return 'n/a';
-    if (Math.abs(n) >= 1e9) return '$' + (n / 1e9).toFixed(2) + 'B';
-    if (Math.abs(n) >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
-    if (Math.abs(n) >= 1e3) return '$' + Math.round(n / 1e3) + 'K';
+    if (Math.abs(n) >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+    if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+    if (Math.abs(n) >= 1e3) return `$${Math.round(n / 1e3)}K`;
     return usdFmt.format(n);
   }
   function pct(n) {
     if (n === null || n === undefined || !isFinite(n)) return 'n/a';
-    return (n > 0 ? '+' : '') + n.toFixed(2) + '%';
+    return `${n > 0 ? '+' : ''}${n.toFixed(2)}%`;
   }
   function ageText(days) {
     if (days === null || days === undefined) return 'unknown';
@@ -31,11 +31,14 @@
   function recompute(row, model) {
     var change = row.change_7d === null || row.change_7d === undefined ? 0 : row.change_7d;
     var growth = Math.min(model.growth_cap, Math.max(model.growth_floor, change));
-    var growthMult = 1 + (growth / 100) * model.growth_weight;
+    var growthRate = growth / 100;
+    var growthMult = 1 + growthRate * model.growth_weight;
     var age = row.age_days === null || row.age_days === undefined ? model.unknown_age_days : row.age_days;
-    var maturity = model.maturity_floor + (Math.min(Math.max(age, 0), model.maturity_days) / model.maturity_days) * model.maturity_range;
+    var ageShare = Math.min(Math.max(age, 0), model.maturity_days) / model.maturity_days;
+    var maturity = model.maturity_floor + ageShare * model.maturity_range;
     var chains = row.chains ? row.chains.length : 0;
-    var reach = 1 + model.reach_per_chain * Math.min(Math.max(chains - 1, 0), model.reach_max_chains);
+    var extraChains = Math.min(Math.max(chains - 1, 0), model.reach_max_chains);
+    var reach = 1 + model.reach_per_chain * extraChains;
     return Math.max(1, Math.round(row.tvl_usd * model.base_multiple * growthMult * maturity * reach));
   }
 
@@ -78,36 +81,58 @@
   function mainAction(p, capital, chain) {
     var c = (p.category || '').toLowerCase();
     var name = p.name;
-    if (c.indexOf('lend') >= 0 || c.indexOf('cdp') >= 0 || c.indexOf('collateral') >= 0 || c.indexOf('money market') >= 0) return 'Supply $' + capital + ' of USDC to ' + name + ' on ' + chain + ' and borrow a small amount against it, then repay.';
-    if (c.indexOf('dex') >= 0 || c.indexOf('yield') >= 0 || c.indexOf('leveraged farm') >= 0) return 'Provide $' + capital + ' of liquidity to ' + name + "'s main pool on " + chain + ' and keep the position open.';
-    if (c.indexOf('bridge') >= 0 || c.indexOf('canonical bridge') >= 0) return 'Bridge $' + capital + ' of USDC to ' + chain + ' through ' + name + ' and use the bridged funds in its app.';
-    if (c.indexOf('restak') >= 0) return 'Restake $' + capital + ' of liquid staking tokens through ' + name + ' on ' + chain + ' and keep the receipt.';
-    if (c.indexOf('liquid staking') >= 0 || c.indexOf('staking') >= 0) return "Stake $" + capital + " of the chain's staking asset through " + name + ' and keep the receipt token.';
-    if (c.indexOf('perpetual') >= 0 || c.indexOf('derivative') >= 0 || c.indexOf('options') >= 0) return 'Deposit $' + capital + ' of USDC as margin on ' + name + ' and open one small hedge, then close it.';
-    if (c.indexOf('prediction') >= 0) return 'Fund $' + capital + ' and place one market position on ' + name + ', then settle it.';
-    if (c.indexOf('curator') >= 0 || c.indexOf('allocator') >= 0 || c.indexOf('vault') >= 0) return 'Deposit $' + capital + ' into a ' + name + ' vault on ' + chain + ' and keep the shares.';
-    if (c.indexOf('stable') >= 0) return 'Mint or deposit $' + capital + ' of the stable asset through ' + name + ' on ' + chain + '.';
-    if (c.indexOf('rwa') >= 0) return "Mint $" + capital + " of the protocol's yield asset on " + chain + ' and hold it.';
-    if (c.indexOf('insurance') >= 0) return 'Buy $' + capital + ' of cover from ' + name + ' on ' + chain + ' and keep the policy.';
-    if (c.indexOf('gaming') >= 0 || c.indexOf('game') >= 0) return 'Play ' + name + ' on ' + chain + ' with $' + capital + ' of in-game assets and finish one quest line.';
-    if (c.indexOf('ai') >= 0 || c.indexOf('data') >= 0) return 'Run one ' + name + ' job on ' + chain + ' with $' + capital + ' of credits and keep the receipt.';
-    if (c.indexOf('social') >= 0) return 'Post and engage daily on ' + name + ' for a week with a $' + capital + ' starter balance.';
-    if (c.indexOf('nft') >= 0) return 'Mint or trade one ' + name + ' item on ' + chain + ' for about $' + capital + ' and list it once.';
-    if (c.indexOf('payment') >= 0) return 'Pay $' + capital + ' through ' + name + ' on ' + chain + ' and keep the receipt.';
+    if (c.indexOf('lend') >= 0 || c.indexOf('cdp') >= 0 || c.indexOf('collateral') >= 0 || c.indexOf('money market') >= 0) return `Supply $${capital} of USDC to ${name} on ${chain} and borrow ` +
+      `a small amount against it, then repay.`;
+    if (c.indexOf('dex') >= 0 || c.indexOf('yield') >= 0 || c.indexOf('leveraged farm') >= 0) return `Provide $${capital} of liquidity to ${name}'s main pool on ${chain} ` +
+      `and keep the position open.`;
+    if (c.indexOf('bridge') >= 0 || c.indexOf('canonical bridge') >= 0) return `Bridge $${capital} of USDC to ${chain} through ${name} ` +
+      `and use the bridged funds in its app.`;
+    if (c.indexOf('restak') >= 0) return `Restake $${capital} of liquid staking tokens through ${name} ` +
+      `on ${chain} and keep the receipt.`;
+    if (c.indexOf('liquid staking') >= 0 || c.indexOf('staking') >= 0) return `Stake $${capital} of the chain's staking asset through ${name} ` +
+      `and keep the receipt token.`;
+    if (c.indexOf('perpetual') >= 0 || c.indexOf('derivative') >= 0 || c.indexOf('options') >= 0) return `Deposit $${capital} of USDC as margin on ${name} and open one small hedge, ` +
+      `then close it.`;
+    if (c.indexOf('prediction') >= 0) return `Fund $${capital} and place one market position on ${name}, ` +
+      `then settle it.`;
+    if (c.indexOf('curator') >= 0 || c.indexOf('allocator') >= 0 || c.indexOf('vault') >= 0) return `Deposit $${capital} into a ${name} vault on ${chain} and keep the shares.`;
+    if (c.indexOf('stable') >= 0) return `Mint or deposit $${capital} of the stable asset through ` +
+      `${name} on ${chain}.`;
+    if (c.indexOf('rwa') >= 0) return `Mint $${capital} of the protocol's yield asset on ${chain} ` +
+      `and hold it.`;
+    if (c.indexOf('insurance') >= 0) return `Buy $${capital} of cover from ${name} on ${chain} ` +
+      `and keep the policy.`;
+    if (c.indexOf('gaming') >= 0 || c.indexOf('game') >= 0) return `Play ${name} on ${chain} with $${capital} ` +
+      `of in-game assets and finish one quest line.`;
+    if (c.indexOf('ai') >= 0 || c.indexOf('data') >= 0) return `Run one ${name} job on ${chain} with $${capital} ` +
+      `of credits and keep the receipt.`;
+    if (c.indexOf('social') >= 0) return `Post and engage daily on ${name} for a week with a $${capital} ` +
+      `starter balance.`;
+    if (c.indexOf('nft') >= 0) return `Mint or trade one ${name} item on ${chain} for about $${capital} ` +
+      `and list it once.`;
+    if (c.indexOf('payment') >= 0) return `Pay $${capital} through ${name} on ${chain} ` +
+      `and keep the receipt.`;
     return 'Deposit $' + capital + ' of USDC into ' + name + ' on ' + chain + ' and keep the position open.';
   }
   function weeklyHabit(p) {
     var c = (p.category || '').toLowerCase();
-    if (c.indexOf('lend') >= 0 || c.indexOf('cdp') >= 0) return 'Adjust the borrow once a week, such as adding collateral or repaying a little.';
-    if (c.indexOf('dex') >= 0 || c.indexOf('yield') >= 0) return 'Claim or compound the pool rewards once a week and rebalance if the range drifts.';
-    if (c.indexOf('bridge') >= 0) return 'Bridge a small amount back and forth once a week so the route stays active.';
-    if (c.indexOf('perpetual') >= 0 || c.indexOf('derivative') >= 0) return 'Open and close one small position each week, never leaving a large trade open.';
-    if (c.indexOf('prediction') >= 0) return 'Place one small market position each week and settle it before it expires.';
-    if (c.indexOf('gaming') >= 0 || c.indexOf('social') >= 0) return 'Finish one daily quest each week and keep the streak alive.';
+    if (c.indexOf('lend') >= 0 || c.indexOf('cdp') >= 0) return 'Adjust the borrow once a week, such as ' +
+      'adding collateral or repaying a little.';
+    if (c.indexOf('dex') >= 0 || c.indexOf('yield') >= 0) return 'Claim or compound the pool rewards once a week ' +
+      'and rebalance if the range drifts.';
+    if (c.indexOf('bridge') >= 0) return 'Bridge a small amount back and forth once a week ' +
+      'so the route stays active.';
+    if (c.indexOf('perpetual') >= 0 || c.indexOf('derivative') >= 0) return 'Open and close one small position each week, ' +
+      'never leaving a large trade open.';
+    if (c.indexOf('prediction') >= 0) return 'Place one small market position each week ' +
+      'and settle it before it expires.';
+    if (c.indexOf('gaming') >= 0 || c.indexOf('social') >= 0) return 'Finish one daily quest each week ' +
+      'and keep the streak alive.';
     return 'Make one qualifying action each week, such as a deposit, a borrow, a swap or a vote.';
   }
   function formatStep(step) {
-    var s = step.text + ' Cost: ' + step.cost + '. Time: ' + step.time + '.';
+    var s = `${step.text} Cost: ${step.cost}. ` +
+      `Time: ${step.time}.`;
     if (s.length > 600) s = s.slice(0, 596) + '...';
     if (s.length < 20) s = s + " Hold the position and check the protocol's own page.";
     return s;
@@ -117,14 +142,20 @@
     var capital = capitalNeeded(p);
     var hold = holdDays(p.age_days);
     return [
-      { text: 'Use a fresh wallet that holds only the funds you plan to farm, and keep its seed phrase offline.', cost: 'under $3 of gas for the first transaction', time: '5 minutes' },
-      { text: mainAction(p, capital, chain), cost: '$' + capital + ' of capital and about $' + (capital >= 150 ? 8 : 4) + ' of gas', time: '15 minutes to set up' },
+      { text: 'Use a fresh wallet that holds only the funds you plan to farm, ' +
+        'and keep its seed phrase offline.', cost: 'under $3 of gas for the first transaction', time: '5 minutes' },
+      { text: mainAction(p, capital, chain), cost: `$${capital} of capital and about $${capital >= 150 ? 8 : 4} of gas`, time: '15 minutes to set up' },
       { text: weeklyHabit(p), cost: 'about $2 of gas a week', time: '10 minutes a week' },
-      { text: "Open the protocol's own points, quests or rewards page and finish every free task it lists.", cost: 'no fee for the tasks themselves', time: '20 minutes a week' },
-      { text: 'Hold the position for at least ' + hold + ' days so the activity is counted in more than one snapshot.', cost: 'the $' + capital + ' stays in the position', time: hold + ' days' },
-      { text: "Check the protocol's announcements once a week for snapshot dates, and do not move funds the day before one.", cost: 'nothing but the check', time: '5 minutes a week' },
-      { text: "Before you withdraw, open the protocol's own points or rewards page and claim only from the link it publishes.", cost: 'no fee to check, and never pay to claim', time: '10 minutes' },
-      { text: 'Write the wallet, the dates and every transaction in a farm log so you can repeat the position or unwind it.', cost: 'nothing but the log', time: '5 minutes' }
+      { text: "Open the protocol's own points, quests or rewards page and finish " +
+        'every free task it lists.', cost: 'no fee for the tasks themselves', time: '20 minutes a week' },
+      { text: `Hold the position for at least ${hold} days so the activity is counted ` +
+        'in more than one snapshot.', cost: `the $${capital} stays in the position`, time: `${hold} days` },
+      { text: "Check the protocol's announcements once a week for snapshot dates, " +
+        'and do not move funds the day before one.', cost: 'nothing but the check', time: '5 minutes a week' },
+      { text: "Before you withdraw, open the protocol's own points or rewards page " +
+        'and claim only from the link it publishes.', cost: 'no fee to check, and never pay to claim', time: '10 minutes' },
+      { text: 'Write the wallet, the dates and every transaction in a farm log ' +
+        'so you can repeat the position or unwind it.', cost: 'nothing but the log', time: '5 minutes' }
     ].map(formatStep);
   }
 
@@ -184,7 +215,7 @@
     return elem('header', { class: 'top' },
       elem('div', { class: 'brand' }, elem('span', { class: 'mark' }), elem('span', { class: 'brand-name', text: 'Token Radar' })),
       elem('div', { class: 'top-meta' },
-        elem('span', { text: 'Snapshot ' + DATA.as_of }),
+        elem('span', { text: `Snapshot ${DATA.as_of}` }),
         elem('span', { text: 'DefiLlama protocol index' }),
         elem('span', { text: DATA.model_version + ' model' })
       )
@@ -194,11 +225,11 @@
   function intro() {
     return elem('section', { class: 'lede' },
       elem('div', null,
-        elem('h1', { text: DATA.watchlist_size + ' watchlist protocols, ranked by implied value' }),
-        elem('p', { text: 'The watchlist is the floor: every protocol with at least $' + Math.round(DATA.floor_usd / 1e6) + 'M of TVL and no token on record. The early radar adds ' + DATA.early_size + ' pre-token protocols below that floor. Implied value is a model, not a promise.' })
+        elem('h1', { text: `${DATA.watchlist_size} watchlist protocols, ranked by implied value` }),
+        elem('p', { text: `The watchlist is the floor: every protocol with at least $${Math.round(DATA.floor_usd / 1e6)}M of TVL and no token on record. The early radar adds ${DATA.early_size} pre-token protocols below that floor. Implied value is a model, not a promise.` })
       ),
       elem('div', { class: 'facts' },
-        elem('div', { class: 'fact' }, elem('span', { text: 'Watchlist covered' }), elem('b', { text: DATA.watchlist_size + ' / ' + DATA.watchlist_size })),
+        elem('div', { class: 'fact' }, elem('span', { text: 'Watchlist covered' }), elem('b', { text: `${DATA.watchlist_size} / ${DATA.watchlist_size}` })),
         elem('div', { class: 'fact' }, elem('span', { text: 'Pre-token rows scored' }), elem('b', { text: String(DATA.board_size) })),
         elem('div', { class: 'fact' }, elem('span', { text: 'Early rows below the floor' }), elem('b', { text: String(DATA.early_size) })),
         elem('div', { class: 'fact' }, elem('span', { text: 'Live-token protocols set aside' }), elem('b', { text: String(DATA.live_size) }))
@@ -210,10 +241,10 @@
     var top = DATA.rows.slice(0, 3);
     return elem('div', { class: 'spotlight' }, top.map(function (r) {
       return elem('button', { type: 'button', class: 'spot', onclick: function () { openDetail(r.slug); } },
-        elem('span', { class: 'rank', text: 'Rank ' + r.rank + ' · ' + r.signal }),
+        elem('span', { class: 'rank', text: `Rank ${r.rank} · ${r.signal}` }),
         elem('h3', { text: r.name }),
-        elem('p', { text: (r.category || 'Other') + ' · TVL ' + money(r.tvl_usd) + ' · ' + (r.chains || []).slice(0, 3).join(', ') }),
-        elem('div', { class: 'value', text: money(r.implied_value_usd) + ' implied' })
+        elem('p', { text: `${r.category || 'Other'} · TVL ${money(r.tvl_usd)} · ${(r.chains || []).slice(0, 3).join(', ')}` }),
+        elem('div', { class: 'value', text: `${money(r.implied_value_usd)} implied` })
       );
     }));
   }
@@ -240,7 +271,7 @@
       elem('div', { class: 'field' }, elem('label', { for: 'category', text: 'Category' }), select),
       elem('div', { class: 'field' }, elem('label', { for: 'chain', text: 'Chain' }), chainSelect),
       elem('div', { class: 'field' }, elem('span', { class: 'sub', text: 'Token status' }), elem('div', { class: 'tabs' }, pre, live)),
-      elem('span', { class: 'count', text: view.tab === 'pre-token' ? visibleRows().length + ' rows shown' : DATA.live.length + ' live-token protocols' })
+      elem('span', { class: 'count', text: view.tab === 'pre-token' ? `${visibleRows().length} rows shown` : `${DATA.live.length} live-token protocols` })
     );
   }
 
@@ -276,13 +307,13 @@
         elem('td', { class: 'num', text: String(r.rank) }),
         elem('td', null, elem('div', { class: 'name' },
           elem('b', { text: r.name }),
-          elem('span', { class: 'sub', text: (r.category || 'Other') + ' on ' + (r.chains && r.chains.length ? r.chains.slice(0, 2).join(', ') : 'an unnamed chain') })
+          elem('span', { class: 'sub', text: `${r.category || 'Other'} on ${(r.chains && r.chains.length ? r.chains.slice(0, 2).join(', ') : 'an unnamed chain')}` })
         )),
         elem('td', { class: 'num', text: money(r.tvl_usd) }),
         elem('td', { class: 'num ' + growthClass, text: growth }),
         elem('td', { class: 'num', text: ageText(r.age_days) }),
         elem('td', null, elem('div', { class: 'implied' },
-          elem('div', { class: 'bar', 'aria-hidden': 'true' }, elem('i', { style: 'width:' + Math.max(3, Math.round((r.implied_value_usd / max) * 100)) + '%' })),
+          elem('div', { class: 'bar', 'aria-hidden': 'true' }, elem('i', { style: `width:${Math.max(3, Math.round((r.implied_value_usd / max) * 100))}%` })),
           elem('span', { class: 'num', text: money(r.implied_value_usd) })
         )),
         elem('td', null, elem('span', { class: signalCls(r.signal), text: r.signal })),
@@ -315,7 +346,7 @@
     DATA.live.forEach(function (r) {
       tbody.appendChild(elem('tr', null,
         elem('td', { class: 'num', text: 'live' }),
-        elem('td', null, elem('div', { class: 'name' }, elem('b', { text: r.name }), elem('span', { class: 'sub', text: (r.category || 'Other') + ' on ' + (r.chains && r.chains.length ? r.chains.slice(0, 2).join(', ') : 'an unnamed chain') }))),
+        elem('td', null, elem('div', { class: 'name' }, elem('b', { text: r.name }), elem('span', { class: 'sub', text: `${r.category || 'Other'} on ${(r.chains && r.chains.length ? r.chains.slice(0, 2).join(', ') : 'an unnamed chain')}` }))),
         elem('td', { class: 'num', text: money(r.tvl_usd) }),
         elem('td', { class: 'num ' + (r.change_7d !== null && r.change_7d >= 0 ? 'pos' : 'neg'), text: pct(r.change_7d) }),
         elem('td', { class: 'num', text: money(r.mcap_usd) }),
@@ -339,9 +370,9 @@
       elem('h2', { text: 'How implied value is computed' }),
       elem('p', { class: 'sub', text: 'Every row is scored by one function of the snapshot figures. No protocol name is special-cased, and no row is hand-picked.' }),
       elem('div', { class: 'formula' },
-        'implied = round( tvl_usd x ' + m.base_multiple + ' x (1 + clamp(change_7d, ' + m.growth_floor + ', ' + m.growth_cap + ') / 100 x ' + m.growth_weight + ') x (' + m.maturity_floor + ' + min(age_days, ' + m.maturity_days + ') / ' + m.maturity_days + ' x ' + m.maturity_range + ') x (1 + ' + m.reach_per_chain + ' x min(chains - 1, ' + m.reach_max_chains + ')) )'
+        `implied = round( tvl_usd x ${m.base_multiple} x (1 + clamp(change_7d, ${m.growth_floor}, ${m.growth_cap}) / 100 x ${m.growth_weight}) x (${m.maturity_floor} + min(age_days, ${m.maturity_days}) / ${m.maturity_days} x ${m.maturity_range}) x (1 + ${m.reach_per_chain} x min(chains - 1, ${m.reach_max_chains})) )`
       ),
-      elem('p', { class: 'sub', text: 'TVL and seven-day growth come from the snapshot. Age is the time since the protocol was first listed, the best record of how long it has run with no token; an unlisted age uses ' + m.unknown_age_days + ' days. Reach rewards protocols live on several chains, where more users can farm. The early radar is every pre-token protocol below the watchlist floor, by TVL, and the live-token protocols are set aside with their market caps shown.' })
+      elem('p', { class: 'sub', text: `TVL and seven-day growth come from the snapshot. Age is the time since the protocol was first listed, the best record of how long it has run with no token; an unlisted age uses ${m.unknown_age_days} days. Reach rewards protocols live on several chains, where more users can farm. The early radar is every pre-token protocol below the watchlist floor, by TVL, and the live-token protocols are set aside with their market caps shown.` })
     );
   }
 
@@ -357,9 +388,9 @@
     var steps = buildSteps(row);
     dialog.appendChild(elem('div', { class: 'detail-head' },
       elem('div', null,
-        elem('span', { class: 'brand-name', text: 'Rank ' + row.rank + ' of ' + DATA.board_size + ' · ' + row.signal }),
+        elem('span', { class: 'brand-name', text: `Rank ${row.rank} of ${DATA.board_size} · ${row.signal}` }),
         elem('h2', { id: 'detail-title', text: row.name }),
-        elem('p', { class: 'sub', text: (row.category || 'Other') + ' on ' + (row.chains && row.chains.length ? row.chains.join(', ') : 'an unnamed chain') })
+        elem('p', { class: 'sub', text: `${row.category || 'Other'} on ${(row.chains && row.chains.length ? row.chains.join(', ') : 'an unnamed chain')}` })
       ),
       elem('button', { class: 'close', type: 'button', 'aria-label': 'Close details', text: 'Close', onclick: function () { dialog.close(); } })
     ));
@@ -375,7 +406,7 @@
         elem('div', null, elem('span', { text: 'Reach multiplier' }), elem('b', { class: 'num', text: String(row.reach_multiplier) })),
         elem('div', null, elem('span', { text: 'Implied value' }), elem('b', { class: 'num', text: money(row.implied_value_usd) }))
       ),
-      elem('p', { class: 'sub', text: 'Model ' + DATA.model_version + ': the same function scores every protocol. The page recomputes this row as ' + money(recompute(row, DATA.model)) + (recompute(row, DATA.model) === row.implied_value_usd ? ', the same number board.json carries.' : ', which differs from the board: the data would be stale.') + ' This is an estimate, not a price.' })
+      elem('p', { class: 'sub', text: `Model ${DATA.model_version}: the same function scores every protocol. The page recomputes this row as ${money(recompute(row, DATA.model))}${recompute(row, DATA.model) === row.implied_value_usd ? ', the same number board.json carries.' : ', which differs from the board: the data would be stale.'} This is an estimate, not a price.` })
     ));
     dialog.appendChild(elem('section', { class: 'detail-section' },
       elem('h3', { text: 'Farm plan' }),
