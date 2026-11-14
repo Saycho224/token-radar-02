@@ -65,10 +65,12 @@ function copyFiles(from: string, to: string): string[] {
   if (!existsSync(from)) return [];
   mkdirSync(to, { recursive: true });
   const copied: string[] = [];
-  for (const name of readdirSync(from)) {
+  const entries = readdirSync(from);
+  for (const name of entries) {
     if (name.startsWith('.')) continue;
     const path = join(from, name);
-    if (!statSync(path).isFile()) continue;
+    const info = statSync(path);
+    if (!info.isFile()) continue;
     copyFileSync(path, join(to, name));
     copied.push(name);
   }
@@ -92,8 +94,9 @@ for (const name of shots) {
 writeFileSync(join(out, 'dossier.json'), buildDossier(out, { text_max_bytes: TEXT_MAX_BYTES, screenshots: SCREENSHOT_CAPS, dashboard: { max_files: 400, max_bytes: 4_194_304 } }));
 
 const topThree = board.slice(0, 3).map((r) => `${r.rank}. ${r.name} $${r.implied_value_usd.toLocaleString('en-US')}`).join(' | ');
-process.stdout.write(
-  `token radar: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist, ${board.length} rows scored (${radar.early_size} early, ${radar.live_size} live set aside)\n` +
-    `token radar: top 3 by implied value: ${topThree}\n` +
-    `token radar: wrote ${join(out, 'board.json')}, ${join(out, 'data.js')}, ${join(out, 'dashboard')} (3 files), ${join(out, 'screenshots')} (${shots.length} images) and ${join(out, 'dossier.json')}\n`,
-);
+const summaryLines = [
+  `token radar: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist, ${board.length} rows scored (${radar.early_size} early, ${radar.live_size} live set aside)`,
+  `token radar: top 3 by implied value: ${topThree}`,
+  `token radar: wrote ${join(out, 'board.json')}, ${join(out, 'data.js')}, ${join(out, 'dashboard')} (3 files), ${join(out, 'screenshots')} (${shots.length} images) and ${join(out, 'dossier.json')}`,
+];
+process.stdout.write(summaryLines.join('\n') + '\n');
